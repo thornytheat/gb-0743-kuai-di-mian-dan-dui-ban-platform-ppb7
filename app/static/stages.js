@@ -1,6 +1,8 @@
-import {$, clock, command, explanation, facts, field, fillSelection, summary, table} from './dom.js';
+import {$, clock, command, element, explanation, facts, field, fillSelection, summary, table} from './dom.js';
 
 const states = {valid:'可发', revoked:'作废', isolated:'隔离'};
+const verdicts = {direct:'可直接补打', blocked:'需要拦截', confirm:'等待确认'};
+const verdictTone = {direct:'ok', blocked:'bad', confirm:'warn'};
 const rejectRows = rows => rows.map(row => [row.line, row.code, explanation(row.code), row.raw]);
 const rejectHeaders = ['源行','原因码','判定','原始记录'];
 
@@ -83,3 +85,88 @@ export function tickets(data, meta, openBatch) {
     [row.id.slice(0,12),clock(row.created),row.rows,row.active?'当前':'历史',
       row.id === meta.manifest.id ? '正在查看' : command('查看', () => openBatch(row.id))]));
 }
+
+const versionText = version => version ? `修订 ${version.revision} · 行 ${version.line}` : '无可用模板';
+const issueText = issue => [explanation(issue.code), issue.fields.map(field).join('/'), issue.side ? field(issue.side) : '']
+  .filter(Boolean).join(' · ');
+const conclusionText = conclusion => !conclusion ? '无法判定' : conclusion.clean ? '无问题' : conclusion.issues.map(issueText).join('；');
+
+export function preflight(data, state, patch) {
+  const records = data.records;
+  const record = records.find(row => row.id === state.record) || records[records.length - 1] || null;
+  $('preflight-rule').textContent = `规则版本 ${data.rule_version}`;
+  if (!record) {
+    summary([['补打时点','—'],['可直接补打',0,'张','ok'],['需要拦截',0,'张','bad'],['等待确认',0,'张','warn'],['候选面单',0,'张']]);
+    table('preflight-table',['面单','包裹','裁决','依据','原版结论','新版结论'], [], '尚未生成预判，请填写补打时点后生成');
+    $('preflight-detail').replaceChildren(element('p','生成预判后在此查看原版与新版的逐张版面差异','empty'));
+    table('preflight-history',['编号','规则版本','补打时点','裁决分布'], [], '没有预判记录');
+    return;
+  }
+  const counts = record.summary;
+  summary([['补打时点',clock(record.at)],['可直接补打',counts.direct,'张','ok'],['需要拦截',counts.blocked,'张','bad'],
+    ['等待确认',counts.confirm,'张','warn'],['候选面单',counts.total,'张']]);
+  table('preflight-table',['面单','包裹','裁决','依据','原版结论','新版结论'], record.items.map(item =>
+    [command(item.label, () => patch({record: record.id, label: item.label})),item.parcel,
+      element('span', verdicts[item.verdict], verdictTone[item.verdict]), item.basis_note,
+      conclusionText(item.original.conclusion), conclusionText(item.new.conclusion)]));
+  detail(record, state, patch);
+  table('preflight-history',['编号','规则版本','补打时点','裁决分布'], [
+    ...records.map(row => [command(row.id.slice(0,12), () => patch({record: row.id, label: null})),
+      row.rule_version, clock(row.at), `${row.summary.direct} 直接 / ${row.summary.blocked} 拦截 / ${row.summary.confirm} 确认`]),
+    ...data.superseded.map(row => [row.id.slice(0,12), row.rule_version, clock(row.at), '已失效 · 需重算']),
+  ], '没有预判记录');
+  if (data.superseded.length) {
+    $('preflight-history').append(element('p', `旧规则版本下 ${data.superseded.length} 条结论已失效，须按当前规则重算`, 'empty warn'));
+  }
+}
+
+function detail(record, state, patch) {
+  const items = record.items;
+  const chosen = items.find(item => item.label === state.label) || items[0];
+  const target = $('preflight-detail');
+  if (!chosen) { target.replaceChildren(element('p','没有已作废面单可补打','empty')); return; }
+  const head = document.createElement('div');
+  head.className = 'panel-head';
+  head.append(element('h2', `${chosen.label} · ${verdicts[chosen.verdict]}`));
+  const switcher = document.createElement('label');
+  switcher.append(document.createTextNode('面单 '));
+  const picker = document.createElement('select');
+  for (const item of items) {
+    const option = element('option', `${item.label} · ${verdicts[item.verdict]}`);
+    option.value = item.label;
+    if (item.label === chosen.label) option.selected = true;
+    picker.append(option);
+  }
+  picker.addEventListener('change', () => patch({record: record.id, label: picker.value}));
+  switcher.append(picker);
+  head.append(switcher);
+  const diff = chosen.difference;
+  const changes = [
+    ...diff.changed.map(item => `${issueText(item)}：${item.original_area_mm2} → ${item.new_area_mm2} mm²`),
+    ...diff.added.map(item => `新增 ${issueText(item)}（${item.area_mm2} mm²）`),
+    ...diff.removed.map(item => `消失 ${issueText(item)}（${item.area_mm2} mm²）`),
+  ];
+  const rows = [
+    ['原版 · 出单时点', chosen.original.version
+      ? `${versionText(chosen.original.version)} · ${conclusionText(chosen.original.conclusion)}` : '无可用模板'],
+    ['新版 · 补打时点', chosen.new.version
+      ? `${versionText(chosen.new.version)} · ${conclusionText(chosen.new.conclusion)}` : '无可用模板，切换失败，保留原单旧结论'],
+    ['面积变化', changes.join('；') || '两版逐条问题一致'],
+    ['模板改动', chosen.template_change
+      ? `修订 ${chosen.template_change.revision.join('→')} · 静区 ${chosen.template_change.quiet_mm.join('→')} mm` +
+        (chosen.template_change.zones_changed.length
+          ? ` · 版位调整 ${chosen.template_change.zones_changed.map(field).join('/')}` : ' · 版位未变')
+      : '无法对比'],
+  ];
+  if (chosen.retained && chosen.code === 'TEMPLATE_SWITCH_FAILED') {
+    rows.push(['保留原单', `${chosen.retained.note}（作废于 ${clock(chosen.retained.void_at)}）`]);
+  }
+  const body = element('div', '', 'preflight-detail-body');
+  for (const [name, value] of rows) {
+    const line = element('div', '', 'fact');
+    line.append(element('span', name, 'dim'), element('strong', value, 'mono'));
+    body.append(line);
+  }
+  target.replaceChildren(head, body);
+}
+

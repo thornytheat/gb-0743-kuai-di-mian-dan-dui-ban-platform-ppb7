@@ -67,3 +67,8 @@ tbody tr:hover td { background: var(--panel-2); }
 .fact { padding: 5px 7px; border: 1px solid var(--line); background: var(--panel-2); }
 .fact span { display: block; }
 .fact strong { font-size: 17px; }
+
+.preflight-stage { grid-template-columns: minmax(0, 1fr); }
+.preflight-detail-body { padding: var(--pad); display: grid; gap: 4px; }
+.preflight-detail-body .fact { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.preflight-detail-body .fact strong { font-size: 12px; font-weight: 400; overflow-wrap: anywhere; }

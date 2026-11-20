@@ -32,7 +32,24 @@
 | `POST /api/intake` | `multipart/form-data` 的 `expected` 和 `prints` |
 | `POST /api/tickets/void` | JSON 的 `expected`、`label`、`at`、`reason` |
 | `POST /api/tickets/reprint` | JSON 的 `expected`、`target`、`label`、`at`。沿用旧单字段几何，按新时点匹配模板 |
+| `POST /api/preflight` | JSON 的 `expected`、`at`。按原版与新版分别重算已作废面单版面并留档 |
 | `POST /api/runs/rerun` | JSON 的 `expected` |
 | `POST /api/runs/restore` | JSON 的 `expected`、`target` |
 
 `expected` 为当前完整批次编号。七阶段 API 用 `?run=<编号>` 读取任一已归档批次。批次编号由规则版本、原始输入字节数和 SHA-256 计算。同样内容只归档一次，重跑校验业务证据且保留首次时间和耗时。证据包的 `sha256` 针对外层 `evidence` 对象，计算前按键名排序，序列化为紧凑 UTF-8 JSON，保留中文原字符。
+
+## 跨版补打预判
+
+`POST /api/preflight` 的 `at` 为补打时点，须含时区。响应 `created` 表示是否新建记录，同一批次、同一规则版本、同一时点重复提交返回同一 `id` 且 `created=false`。
+
+| 字段 | 说明 |
+|---|---|
+| `summary` | `direct`、`blocked`、`confirm` 三态计数与 `total` |
+| `items[].verdict` | `direct` 可直接补打、`blocked` 需要拦截、`confirm` 等待确认 |
+| `items[].original` | 按出单时点绑定的模板与版面结论 |
+| `items[].new` | 按补打时点绑定的模板与版面结论；`version` 为 `null` 表示切换失败 |
+| `items[].difference` | `added`、`removed`、`changed` 三类逐条问题差异，`changed` 含前后面积 |
+| `items[].template_change` | 两版修订号、静区宽度、版位调整字段与纸张 |
+| `items[].retained` | 切换失败时保留的原单旧版结论，仅对当前规则版本有效 |
+
+`GET /api/preflight` 返回 `records`（当前规则版本的有效记录）与 `superseded`（旧规则版本记录，`valid=false`，须重算）。

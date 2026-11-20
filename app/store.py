@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS source (run_id TEXT NOT NULL REFERENCES batch(id), na
                                    raw BLOB NOT NULL, PRIMARY KEY (run_id, name));
 CREATE TABLE IF NOT EXISTS current_batch (slot INTEGER PRIMARY KEY CHECK (slot = 1),
                                           run_id TEXT NOT NULL REFERENCES batch(id));
+CREATE TABLE IF NOT EXISTS preflight (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES batch(id),
+                                      created TEXT NOT NULL, payload TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS preflight_run ON preflight(run_id, created);
 '''
 
 
@@ -84,3 +87,21 @@ class Store:
                 db.executemany('INSERT INTO source VALUES (?, ?, ?)', [(key, name, raw) for name, raw in sources.items()])
             db.execute('INSERT INTO current_batch VALUES (1, ?) ON CONFLICT(slot) DO UPDATE SET run_id=excluded.run_id', (key,))
             return {'id': key, 'created': not old, 'changed': key != expected}
+
+    def save_preflight(self, record):
+        """按预判编号幂等留档：同一输入重复执行只保留首条，命中即返回原记录。"""
+        key = record['id']
+        with self.transaction() as db:
+            db.execute('BEGIN IMMEDIATE')
+            found = db.execute('SELECT payload FROM preflight WHERE id=?', (key,)).fetchone()
+            if found:
+                return {'record': json.loads(found[0]), 'created': False, 'changed': False}
+            db.execute('INSERT INTO preflight VALUES (?, ?, ?, ?)',
+                       (key, record['run_id'], record['created'], canonical(record)))
+            return {'record': record, 'created': True, 'changed': True}
+
+    def preflights(self, run_id):
+        with self.transaction() as db:
+            rows = db.execute('SELECT payload FROM preflight WHERE run_id=? ORDER BY created, id',
+                              (run_id,)).fetchall()
+        return [json.loads(row[0]) for row in rows]

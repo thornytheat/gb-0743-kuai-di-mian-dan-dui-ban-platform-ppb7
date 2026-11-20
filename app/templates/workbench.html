@@ -9,7 +9,7 @@
   <script type="module" src="{{ url_for('static', filename='main.js') }}"></script>
 </head>
 <body>
-  {% set stages = [('intake','面单收件'),('templates','模板生效'),('coordinates','坐标归一'),('barcode','条码字段对读'),('occlusion','边界遮挡'),('reconcile','出单勾稽'),('tickets','重打工单')] %}
+  {% set stages = [('intake','面单收件'),('templates','模板生效'),('coordinates','坐标归一'),('barcode','条码字段对读'),('occlusion','边界遮挡'),('reconcile','出单勾稽'),('preflight','跨版补打预判'),('tickets','重打工单')] %}
   <a class="skip" href="#main">跳到工作区</a>
   <div class="shell">
     <aside class="rail">
@@ -31,6 +31,7 @@
         {% include 'barcode.html' %}
         {% include 'occlusion.html' %}
         {% include 'reconcile.html' %}
+        {% include 'preflight.html' %}
         <div class="stage ticket-stage" id="stage-tickets" hidden>
           <section class="panel"><div class="panel-head"><h2>面单链</h2><label>显示 <select id="ticket-filter"><option value="links">重打与作废</option><option value="all">全部面单</option><option value="isolated">隔离面单</option></select></label></div><div id="tickets-table" class="scroll"></div></section>
           <section class="panel"><div class="panel-head"><h2>登记作废与重打</h2><label>工单动作 <select id="ticket-action"><option value="reprint">重打</option><option value="void">作废</option></select></label></div>

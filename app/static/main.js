@@ -4,6 +4,7 @@ import * as views from './stages.js';
 
 const navigation = new Map([...document.querySelectorAll('[data-stage]')].map(link => [link.dataset.stage, link]));
 let stage, selected, anchor, info, data, extra, sequence = 0, busy = false;
+const preflightState = {record: null, label: null};
 const run = () => info.manifest.id;
 const active = () => info.history.find(row => row.active)?.id;
 
@@ -32,6 +33,8 @@ function draw() {
   if (!info || !data) return;
   if (stage === 'coordinates') coordinates(data, extra, anchor, id => { anchor = id; draw(); });
   else if (stage === 'occlusion') views.occlusion(data, id => { anchor = id; location.hash = 'coordinates'; });
+  else if (stage === 'preflight') views.preflight(data, preflightState,
+    patch => { Object.assign(preflightState, patch); draw(); });
   else if (stage === 'tickets') { views.tickets(data, info, id => load(id)); chooseTarget(); }
   else views[stage](data);
 }
@@ -59,7 +62,12 @@ async function load(selection = selected) {
     const suffix = `?run=${encodeURIComponent(meta.manifest.id)}`;
     const [result, proof] = await Promise.all([api(`/api/${key}${suffix}`), key === 'coordinates' ? api(`/api/occlusion${suffix}`) : null]);
     if (id !== sequence) return;
-    if (info?.manifest.id !== meta.manifest.id) $('ticket-time').value = '';
+    if (info?.manifest.id !== meta.manifest.id) {
+      $('ticket-time').value = '';
+      $('preflight-time').value = '';
+      preflightState.record = null;
+      preflightState.label = null;
+    }
     info = meta;
     data = result.data;
     extra = proof?.data;
@@ -74,7 +82,7 @@ async function mutate(url, params, done) {
   if (busy) return;
   busy = true;
   const token = sequence;
-  const forms = [$('ticket-form'), $('upload-form')];
+  const forms = [$('ticket-form'), $('upload-form'), $('preflight-form')];
   for (const form of forms) form.inert = true;
   $('rerun').disabled = $('restore').disabled = true;
   hint('正在检查…');
@@ -107,6 +115,18 @@ $('upload-form').addEventListener('submit', event => {
   const form = new FormData(event.currentTarget);
   form.set('expected',run());
   mutate('/api/intake',form, result => { $('upload-form').reset(); hint(result.created ? '收件已归档' : '沿用已有批次'); });
+});
+$('preflight-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const time = $('preflight-time').value;
+  if (!time) return;
+  const at = `${time.length === 16 ? time + ':00' : time}+08:00`;
+  mutate('/api/preflight',{expected:run(),at}, result => {
+    preflightState.record = result.id;
+    preflightState.label = null;
+    if (stage === 'preflight') draw();
+    hint(result.created ? `预判已留档 · ${result.data.summary.total} 张` : '同一时点预判已存在 · 沿用原记录');
+  });
 });
 $('ticket-form').addEventListener('submit', event => {
   event.preventDefault();

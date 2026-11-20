@@ -1,0 +1,14 @@
+<div class="stage preflight-stage" id="stage-preflight" hidden>
+  <section class="panel">
+    <div class="panel-head"><h2>跨版补打预判</h2><span class="dim">作废面单逐张裁决 · 原版对上新版</span></div>
+    <form id="preflight-form" class="form-deck">
+      <label><span>补打时点</span><input id="preflight-time" type="datetime-local" step="1" required></label>
+      <button class="btn primary" type="submit" id="preflight-submit">生成预判</button>
+      <span class="dim">原版按出单时点、新版按补打时点各算一次</span>
+    </form>
+    <div class="fact-grid" id="preflight-summary"></div>
+  </section>
+  <section class="panel"><div class="panel-head"><h2>逐张裁决</h2><span class="dim">可直接补打 / 需要拦截 / 等待确认</span></div><div id="preflight-table" class="scroll"></div></section>
+  <section class="panel"><div class="panel-head"><h2>版面结论差异</h2><span class="dim">选中面单查看原版与新版差在哪里</span></div><div id="preflight-detail"></div></section>
+  <section class="panel"><div class="panel-head"><h2>预判留档</h2><span class="dim" id="preflight-rule"></span></div><div id="preflight-history" class="scroll short"></div></section>
+</div>

@@ -10,6 +10,7 @@ from .modules.barcode.handler import bp as barcode
 from .modules.coordinates.handler import bp as coordinates
 from .modules.intake.handler import bp as intake
 from .modules.occlusion.handler import bp as occlusion
+from .modules.preflight.handler import bp as preflight
 from .modules.reconcile.handler import bp as reconcile
 from .modules.templates.handler import bp as templates
 from .modules.tickets.handler import bp as tickets
@@ -25,7 +26,7 @@ def create_app(path=None):
     db = Store(path or os.getenv('LABEL_DB', 'var/labels.sqlite3'))
     app.extensions['batch_store'] = db
     seed(db)
-    for blueprint in (intake, templates, coordinates, barcode, occlusion, reconcile, tickets):
+    for blueprint in (intake, templates, coordinates, barcode, occlusion, reconcile, preflight, tickets):
         app.register_blueprint(blueprint)
 
     @app.errorhandler(DomainError)

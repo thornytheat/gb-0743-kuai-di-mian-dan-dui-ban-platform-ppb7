@@ -14,6 +14,7 @@
 | M5 边界遮挡 | 筛选静区、版位和相交面积 | `GET /api/occlusion` | `app/modules/occlusion/rules.py` `app/modules/occlusion/service.py` | `tests/test_occlusion.py` |
 | M6 出单勾稽 | 清点输入、结果与包裹可发资格 | `GET /api/reconcile` | `app/modules/reconcile/service.py` | `tests/test_reconcile.py` |
 | M7 重打工单 | 作废、重打、复算与回切旧批次 | `GET /api/tickets` `POST /api/tickets/void` `POST /api/tickets/reprint` `GET /api/runs/<run_id>/evidence.json` | `app/modules/tickets/ledger.py` `app/modules/tickets/service.py` `app/store.py` | `tests/test_tickets.py` |
+| M8 跨版补打预判 | 逐张判定作废面单可否按新版补打并说清差异 | `GET /api/preflight` `POST /api/preflight` | `app/modules/preflight/rules.py` `app/modules/preflight/service.py` | `tests/test_preflight.py` |
 
 ## 陷阱登记
 
@@ -32,9 +33,23 @@
 | TRAP-23 | `L-019`、`L-021` 卡在版本起止点 | 双绑定或不绑定 | 区间左闭右开 | `app/modules/templates/service.py` | `tests/test_templates.py::test_half_open_boundaries_choose_new_revision_then_fall_back` |
 | TRAP-25 | `templates.jsonl` 两条修订 3 重叠 | 选择任意一条 | 冲突版本隔离，剩余取最高修订号 | `app/modules/templates/versions.py` | `tests/test_templates.py::test_same_revision_overlap_is_quarantined_without_losing_older_versions` |
 | TRAP-26 | 旧批次页面继续登记作废 | 已发布批次被覆盖 | 事务内核对当前批次编号 | `app/store.py` | `tests/test_tickets.py::test_void_new_version_rejects_stale_write_and_restores_original` |
+| TRAP-27 | 换版后补打只按旧版或只按新版判版面 | 版面结论依据不清、两侧口径打架 | 原版按出单时点、新版按补打时点各算一次并逐条比对 | `app/modules/preflight/rules.py` | `tests/test_preflight.py::test_same_old_label_flips_to_confirm_when_new_version_shrinks_zone` |
+| TRAP-28 | 补打时点无可用模板 | 静默沿用旧结论或丢单 | 判为等待确认并保留原单与旧版结论 | `app/modules/preflight/service.py` | `tests/test_preflight.py::test_switch_failure_keeps_original_and_old_conclusion` |
+| TRAP-29 | 同一预判被反复提交或重跑 | 留档表膨胀、结论重复 | 编号由批次+规则版本+时点确定，命中即返回原记录 | `app/store.py` | `tests/test_preflight.py::test_endpoint_archives_once_and_repeats_are_idempotent` |
+| TRAP-30 | 模板规则版本升级 | 旧规则下的结论继续当作有效 | 旧版本记录转 `superseded`、`valid=false`，须重算 | `app/modules/preflight/service.py` | `tests/test_preflight.py::test_rule_change_invalidates_old_records_and_recomputes` |
 
 ## 对账规则
 
 - 每条出单输入归入有效、撤销或隔离。空白、坏行、采信重复均计入隔离。
 - 包裹最多有一张有效面单；历史作废仍保留前后继和作废登记。作废登记另外勾稽，不计入出单数。
 - 面单物理检测与工单资格各保留自己的依据，几何有问题的回执不进入可发链。
+
+## 跨版补打预判（M8）
+
+- 预判只覆盖已作废面单，逐张给出三态之一：可直接补打、需要拦截、等待确认。
+- 原版按**出单时点**绑定模板，新版按**补打时点**绑定模板（同族取最高修订号，左闭右开）。两版都用旧单字段几何，但各按目标纸面重新换算坐标后再判版面。
+- 裁决：两版都干净→可直接；两版都不干净→拦截；一版干净一版不干净→等待确认；补打时点无可用新版模板→等待确认。
+- 已由后继面单替换、或同包裹已有可发面单的旧单直接拦截，避免补打产生第二张可发面单。
+- 切换失败时保留原单与旧版结论，页面单列保留说明；该结论只对生成本条的规则版本有效。
+- 预判编号由批次、规则版本和补打时点确定，同一条件下重复执行只保留首条，`created=false`。批次内容不变时重跑批次也不新增记录。
+- 规则版本变化后，旧版本记录转标记为 `superseded`、`valid=false`，不再作为有效结论；同一时点需按当前规则重算才会重新生效。

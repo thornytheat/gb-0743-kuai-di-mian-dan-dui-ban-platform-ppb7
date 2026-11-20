@@ -16,4 +16,7 @@ LABELS = {
     'LABEL_EXISTS': '面单编号已使用', 'STALE_RUN': '批次已更新，请重新加载', 'RUN_NOT_FOUND': '批次不存在',
     'BAD_REQUEST': '请求字段无效', 'UPLOAD_REQUIRED': '请选择出单文件', 'REPLAY_DRIFT': '复算结果与留档不一致',
     'ACCOUNT_MISMATCH': '出单勾稽异常', 'STORE_UNAVAILABLE': '存储暂不可用，请重试',
+    'CROSS_VERSION_DIVERGENCE': '原版与新版版面结论不一致，待确认',
+    'TEMPLATE_SWITCH_FAILED': '补打时点无可用新版模板，保留原单旧结论',
+    'NO_ISSUABLE_BASIS': '原版与新版均无法出版，需拦截',
 }
